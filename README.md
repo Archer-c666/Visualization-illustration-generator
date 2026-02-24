@@ -25,3 +25,12 @@ An open-source desktop tool for interactively generating publication-ready scien
 * Data processing: pandas
 * Visualization: matplotlib
 * Language: Python 3.8+
+
+### User Workflow / Step-by-Step Guide
+Launch the application: Run python main.py in the terminal/command prompt.
+Import data: Click the Load Data button, then select a CSV/Excel file, or paste a DataFrame directly.
+Interact with AI: In the prompt box, describe the chart/plot you want using natural language.
+Preview & adjust: The AI returns a draft of the generated chart/plot for preview and further adjustments.
+Export: Export the chart/plot as a PNG file, or copy the AI-generated Python plotting code to your local script for reproduction.
+
+
