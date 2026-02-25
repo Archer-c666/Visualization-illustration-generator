@@ -8,7 +8,7 @@ from matplotlib.figure import Figure
 
 from PyQt5.QtWidgets import *
 from PyQt5.QtWidgets import QComboBox
-from PyQt5.QtCore import Qt
+from PyQt5.QtCore import Qt, pyqtSignal
 
 import pandasai as pai
 from pandasai import DataFrame
@@ -17,7 +17,7 @@ from pandasai_litellm.litellm import LiteLLM
 from core import chart_templates
 from core.ai_worker import AIWorker
 from core.config import *
-from UI.styles import MAIN_STYLE
+from ui.styles import MAIN_STYLE
 
 
 TEMPLATES=[
@@ -32,6 +32,22 @@ TEMPLATES=[
     "误差棒",
     "双Y轴"
 ]
+
+class ChatInput(QTextEdit):
+    sendSignal = pyqtSignal()
+
+    def keyPressEvent(self, event):
+        if event.key() == Qt.Key_Return or event.key() == Qt.Key_Enter:
+
+            # Shift+Enter = 换行
+            if event.modifiers() == Qt.ShiftModifier:
+                super().keyPressEvent(event)
+
+            # Enter = 发送
+            else:
+                self.sendSignal.emit()
+        else:
+            super().keyPressEvent(event)
 
 class PlotCanvas(Canvas):
     def __init__(self):
@@ -97,7 +113,9 @@ class DataAnalysisWindow(QMainWindow):
             llm=LiteLLM(model=LLM_MODEL,api_key=OPENAI_API_KEY)
             pai.config.set({
                 "llm": llm,
-                "save_charts": False
+                "save_charts": False,
+                "save_logs": False,
+                "verbose": False
             })
             pai.api_key.set(OPENAI_API_KEY)   # ← 必须加上
 
@@ -112,9 +130,11 @@ class DataAnalysisWindow(QMainWindow):
             left=QVBoxLayout()
 
             self.chat=QTextEdit(); self.chat.setReadOnly(True)
-            self.input=QLineEdit()
+            self.input=ChatInput()
+            self.input.setPlaceholderText("输入问题…  Enter发送 / Shift+Enter换行")
             send=QPushButton("发送 ✨")
             send.clicked.connect(self.ask)
+            self.input.sendSignal.connect(self.ask)
 
             load=QPushButton("加载数据 📂")
             load.clicked.connect(self.load)
@@ -124,6 +144,19 @@ class DataAnalysisWindow(QMainWindow):
             self.template_box=QComboBox()
             self.template_box.addItems(TEMPLATES)
             left.addWidget(self.template_box)
+
+            inspect=QPushButton("数据分析")
+            inspect.clicked.connect(self.show_report)
+
+            recommend=QPushButton("推荐图表")
+            recommend.clicked.connect(self.show_recommend)
+
+            paper=QPushButton("论文模式")
+            paper.clicked.connect(self.enable_paper)
+
+            left.addWidget(inspect)
+            left.addWidget(recommend)
+            left.addWidget(paper)
 
             # 字体选择器
             self.font_box=QComboBox()
@@ -173,13 +206,15 @@ class DataAnalysisWindow(QMainWindow):
             self.chat.append(f"✅ 已加载 {os.path.basename(path)}")
 
         def ask(self):
+            self.input.setDisabled(True)
             if self.df is None:
                 self.chat.append("❌ 请先加载数据")
                 return
-            q=self.input.text().strip()
+            q=self.input.toPlainText().strip()
             if not q:return
             self.chat.append("🧑 "+q)
             self.input.clear()
+            self.input.setFocus()
 
             self.worker=AIWorker(q,self.df)
             self.worker.result.connect(self.handle)
@@ -258,6 +293,9 @@ class DataAnalysisWindow(QMainWindow):
             else:
                 self.chat.append("🤖 "+str(res))
 
+            self.input.setDisabled(False)
+            self.input.setFocus()
+
         def zoom_chart(self):
             dlg=QDialog(self)
             dlg.setWindowTitle("图像预览")
@@ -303,6 +341,37 @@ class DataAnalysisWindow(QMainWindow):
                 plt.rcParams[k]=v
 
             self.chat.append(f"🎨 主题已切换 → {theme}")
+
+        def show_report(self):
+            if self.df is None:
+                self.chat.append("❌ 未加载数据")
+                return
+
+            from core.ai_worker import DataInspector
+            r=DataInspector.analyze(self.df)
+
+            self.chat.append("📊 数据分析报告")
+            self.chat.append(str(r))
+
+        def show_recommend(self):
+
+            if self.df is None:
+                self.chat.append("❌ 未加载数据")
+                return
+
+            from core.ai_worker import ChartRecommender
+            name,reason=ChartRecommender.recommend(self.df)
+
+            self.chat.append(f"📈 推荐图表：{name}")
+            self.chat.append("原因："+reason)
+
+
+        def enable_paper(self):
+
+            from core.ai_worker import apply_paper_style
+            apply_paper_style()
+
+            self.chat.append("📑 已启用论文模式")
 
         def save(self):
             path,_=QFileDialog.getSaveFileName(self,"save","chart.png","PNG (*.png)")
